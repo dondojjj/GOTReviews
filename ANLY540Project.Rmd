@@ -1,0 +1,290 @@
+---
+title: "ANLY540Project"
+author: "Reda Ijaz / Juan Arredondo"
+date: "2023-04-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Loading preprocess review data, with LIWC values.
+
+```{r cars}
+#loading libraries and data
+library(rms)
+
+library(tm)
+library(topicmodels)
+library(tidyverse)
+library(tidytext)
+library(slam)
+library(psych) 
+library(GPArotation)
+
+cleanup = theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(), 
+                panel.background = element_blank(), 
+                axis.line.x = element_line(color = "black"),
+                axis.line.y = element_line(color = "black"),
+                legend.key = element_rect(fill = "white"),
+                text = element_text(size = 10))
+
+
+```
+
+```{r}
+dfcritics = read.csv('data/LIWC-22 Results - GOTCriticsReviews - LIWC Analysis.csv')
+dfusers = read.csv('data/LIWC-22 Results - RedditGOTData - LIWC Analysis.csv')
+```
+
+exploring the Tone column:
+```{r data}
+#cleaning episode count missing values
+dfcritics = dfcritics[dfcritics['nepisode']!='na',]
+dfcritics$nepisode = as.integer(dfcritics$nepisode)
+a = tapply(dfcritics$Tone, dfcritics$nepisode, mean)
+dfusers = dfusers[dfusers['n.episode']!='na',]
+dfusers$n.episode = as.integer(dfusers$n.episode)
+b = tapply(dfusers$Tone, dfusers$n.episode, mean)
+
+#Plotting tone mean value accross episodes
+plot(y = a, x = seq(length(a)),type="l", xlab="Episode", ylab = "Emotional Tone of reviews", col = 'red', ylim = c(25, 60))
+lines(y = b, x = seq(length(b)),type="l", xlab="Episode", ylab = "Emotional Tone of reviews", col = 'blue', ylim = c(25, 60))
+abline(v=29)
+abline(v=48)
+abline(v=59)
+#Plot Trump Predicted Values
+#plot(y=valsToneT, x = seq(as.POSIXct(min(df$TimeStamp)), as.POSIXct(max(df$TimeStamp)), by='hour'), type="l", xlab="Date", ylab = "Emotional Tone of Tweets", col = 'red', ylim = c(25, 60))
+#Plot Biden Predicted Values; Use lines instead of plot to add to existed plot
+#lines(y=valsToneB, x = seq(as.POSIXct(min(df$TimeStamp)), as.POSIXct(max(df$TimeStamp)), by='hour'),         type="l", xlab="Date", ylab = "Emotional Tone of Tweets", col = 'blue')
+
+```
+```{r}
+length(a)
+#b= b[-11]
+b= b[-2]
+b= b[-11]
+b= b[-64]
+b= b[-length(b)]
+length(b)
+
+
+df <- data.frame(episode = seq(length(a)),
+                 criticsTone = a,
+                 usersTone = b)
+write.csv(df,"EToneAverage.csv",row.names=FALSE)
+```
+
+## Including Plots
+
+non-parametric regression for tone emotion review
+
+```{r pressure, echo=FALSE}
+
+#Fit function for Tweets about Trump
+fitToneC = loess(Tone~nepisode, data = dfcritics, span = 0.2, na.action = na.exclude)
+#Get Predicted Values by hour
+valsToneC = predict(fitToneC, newdata = seq(length(a)))
+
+#Repeat with tweets about Biden
+fitToneU = loess(Tone~n.episode, data = dfusers, span = 0.2, na.action = na.exclude)
+#Get Predicted Values by hour
+valsToneU = predict(fitToneU, newdata = seq(length(b)))
+
+#episodes Highlits
+#Pilot - 1
+#Red Wedding S03E09 - 29
+#The mountain and the viper S05E08 - 48
+#Battle of the bastards S06E09 - 59
+#Finale - 73
+
+
+#Plot Trump Predicted Values
+plot(y=valsToneC, x = seq(length(a)), 
+         type="l", xlab="Episode", ylab = "Emotional Tone of reviews", col = 'red', ylim = c(25, 60))
+#Plot Biden Predicted Values; Use lines instead of plot to add to existed plot
+lines(y=valsToneU, seq(length(b)), 
+         type="l", xlab="Episode", ylab = "Emotional Tone of reviews", col = 'blue')
+
+abline(v=29)
+abline(v=48)
+abline(v=59)
+
+#we can see that overall the Tone trend is similar for both groups. the difference is that critics tend to use higher "emotional tone" words in their reviews.
+#another interesting observed behavior is that top rated episodes are not placed on peak Tone values from the regression line.
+
+```
+```{r}
+length(valsToneC)
+#b= b[-11]
+valsToneU= valsToneU[-2]
+valsToneU= valsToneU[-11]
+valsToneU= valsToneU[-64]
+valsToneU= valsToneU[-length(valsToneU)]
+length(valsToneU)
+
+
+df <- data.frame(episode = seq(length(a)),
+                 criticsTone = valsToneC,
+                 usersTone = valsToneU)
+write.csv(df,"EToneRegression.csv",row.names=FALSE)
+```
+
+TODO
+logistic regerssion comparing tone between critics and users
+```{r}
+#compare Tone logistic regression between critics and users
+dfcritics['group'] = 'critics'
+dfcritics['group']
+dfusers['group'] = 'users'
+dfusers['group']
+#data_log = as.data.frame()
+merge1 = dfcritics[,c('Tone','group','Comment')]
+merge2 = dfusers[,c('Tone','group','Comment')]
+logistic_data = rbind(merge1,merge2)
+```
+```{r}
+model = lrm(group ~ Tone, #model formula like lm()
+            data = logistic_data)
+
+model_glm = glm(as.factor(group) ~ Tone, family = 'binomial', data = logistic_data)
+
+model
+model_glm
+
+#the model is statisticaly significant, but per the discrimination indexes there is no much variance represented by the model (1.4%) and the model is basically guessing the outcome C = 0.55.
+#so in terms of user vs critics emotional tone in their reviews, there is no significant effect size between the two groups.
+#we can interpret this as the Tone is not a good predictor to determine if the review was wrote by a critic or a user.
+```
+
+topic models to analyze most common topics between critics and users.
+```{r}
+#CORPUS
+import_corpus = Corpus(VectorSource(logistic_data$Comment))
+#doc matrix
+import_mat =  DocumentTermMatrix(import_corpus,
+           control = list(stemming = FALSE, #create root words
+                          stopwords = TRUE, #remove stop words
+                          minWordLength = 3, #cut out small words
+                          removeNumbers = TRUE, #take out the numbers
+                          removePunctuation = TRUE)) #take out punctuation 
+#word outliers
+import_weight = tapply(import_mat$v/row_sums(import_mat)[import_mat$i], 
+                       import_mat$j, 
+                       mean) *
+  log2(nDocs(import_mat)/col_sums(import_mat > 0))
+
+#ignore very frequent and 0 terms
+import_mat = import_mat[ , import_weight <= 0.95]
+import_mat = import_mat[ row_sums(import_mat) > 0, ]
+
+#create LDA model
+
+k = 5 #number of topics
+SEED = 777
+
+LDA_fit = LDA(import_mat, k = k, 
+              control = list(seed = SEED))
+
+LDA_gibbs = LDA(import_mat, k = k, method = "Gibbs", 
+                control = list(seed = SEED, burnin = 1000, 
+                               thin = 100, iter = 1000))
+
+#alpha smaller alpha - high percentage of documents are clasify into a single topic
+LDA_fit@alpha
+LDA_gibbs@alpha
+#entropy (lower value = almost everything is the same, higher value = topics are evenly spread)
+sapply(list(LDA_fit,LDA_gibbs), function (x) mean(apply(posterior(x)$topics, 1, function(z) - sum(z * log(z)))))
+
+```
+```{r}
+#fit model 5 topics
+#topis (matrix - document by Topics) 
+topics(LDA_fit, k)[1:5,1:20] 
+terms(LDA_fit,20)
+
+LDA_fit_topics = tidy(LDA_fit, matrix = "beta")
+
+#create a top terms 
+top_terms = LDA_fit_topics %>%
+   group_by(topic) %>%
+   top_n(15, beta) %>%
+   ungroup() %>%
+   arrange(topic, -beta)
+
+top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  cleanup +
+  coord_flip()
+```
+
+
+```{r}
+#topis (matrix - document by Topics) 
+topics(LDA_gibbs, k)[1:5,1:20] 
+terms(LDA_gibbs,20)
+
+LDA_fit_topics = tidy(LDA_gibbs, matrix = "beta")
+
+#create a top terms 
+top_terms = LDA_fit_topics %>%
+   group_by(topic) %>%
+   top_n(15, beta) %>%
+   ungroup() %>%
+   arrange(topic, -beta)
+
+top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  cleanup +
+  coord_flip()
+```
+```{r}
+##r chunk
+LDA_gamma5 = as.data.frame(tidy(LDA_gibbs, matrix = "gamma"))
+
+LDA_gamma5 = reshape(LDA_gamma5, idvar = 'document', timevar = 'topic', direction = 'wide')
+
+#head(LDA_gamma5)
+
+```
+```{r}
+library(dplyr)
+logistic_data$document = row.names(logistic_data)
+LDA_topics = merge(logistic_data, LDA_gamma5, by = 'document')
+
+#cor.test(LDA_topics$gamma.1, LDA_topics$sentiment, method = 'spearman')
+wilcox.test(LDA_topics$gamma.1~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.2~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.3~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.4~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.5~LDA_topics$group)
+
+#all p value less than 0.05 
+boxplot(gamma.1~group,data=LDA_topics, main="group and theme 1",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.2~group,data=LDA_topics, main="group and theme 2",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.3~group,data=LDA_topics, main="group and theme 3",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.4~group,data=LDA_topics, main="group and theme 4",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.5~group,data=LDA_topics, main="group and theme 5",
+   xlab="sentiment", ylab="component score")
+
+#topic1 - negative
+#topic2 - positive
+#topic3 - positive
+#topic4 - negative
+#topic5 - negative
+```
+

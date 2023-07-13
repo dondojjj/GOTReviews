@@ -1,0 +1,9 @@
+# ignoring files #
+##################
+EToneAverage.csv
+EToneRegression.csv
+GOTCriticsReviews.csv
+IMDBscrapper.ipynb
+RottenTscrapper.ipynb
+ehthumbs.db
+Thumbs.db

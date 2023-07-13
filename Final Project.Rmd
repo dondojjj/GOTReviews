@@ -1,0 +1,283 @@
+---
+title: 'Final Project'
+author: "Reda Ijaz / Juan Arredondo"
+date: "Sys.Date()"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Objective
+
+This project should allow you to apply the information you've learned in the course to a new dataset. The structure of the final project will be similar to a white paper. The goal of this project is for you to learn how to identify and address a problem with text data and communicate your findings in  report that others can read. The dataset must be related to language or language processing in some way. You must use an analysis we learned in class. 
+
+## Instructions
+
+The final document should be a knitted HTML/PDF/Word document from a Markdown file. You will turn in the knitted document. Be sure to spell and grammar check your work! The following sections should be included: 
+
+### Introduction
+
+Introduce your research topic (the problem) and briefly review related work. Be sure to answer these two questions: (1) Why does this topic matter and (2) What is the background knowledge that someone would need to understand the field or area that you have decided to investigate? In this section, you should include sources that help explain the background area and cite them in APA style. 5-10 articles across the paper would be appropriate - be sure to include these! They are part of the grade! This section should be 3-5 paragraphs.
+
+### Research Question
+
+Given a dataset of Game of Thrones reviews from users and critics, this study aims to answer the following research questions:
+<ul>
+ <li>How do viewers/critics' emotional tone change across each episode review?</li>
+ <li>How do the viewers' emotional responses to the episodes based on the language and sentiment in their discussion comments compare to episode ratings by critics?</li>
+ <li>What are the most common themes and topics in TV show discussion threads, and how do they vary across different critics and viewers' reviews? </li>
+</ul>
+
+## Method 
+
+the viewers and critics comments data was collected from Reddit and Rotten tomatoes respectively. 
+
+
+```{r lybraries}
+library(rms)
+
+library(tm)
+library(topicmodels)
+library(tidyverse)
+library(tidytext)
+library(slam)
+library(psych) 
+library(GPArotation)
+
+cleanup = theme(panel.grid.major = element_blank(), 
+                panel.grid.minor = element_blank(), 
+                panel.background = element_blank(), 
+                axis.line.x = element_line(color = "black"),
+                axis.line.y = element_line(color = "black"),
+                legend.key = element_rect(fill = "white"),
+                text = element_text(size = 10))
+```
+
+### The Data
+Both datasets have the episode information and the comments the critic and viewers made. This data was preprocessed with LIWC to extract the emotional tone score. Each resulting dataset has 3475 and  17051 observations for critics and viewers, respectively.
+
+```{r data}
+dfcritics = read.csv('data/LIWC-22 Results - GOTCriticsReviews - LIWC Analysis.csv')
+dfusers = read.csv('data/LIWC-22 Results - RedditGOTData - LIWC Analysis.csv')
+
+str(dfcritics)
+str(dfusers)
+```
+
+### LM techniques
+
+We use non-parametric regression to answer our first research question and visualize each group's emotional Tone over the episodes. Then, to answer our second question, we used logistic regression to analyze each group's emotional Tone and how they compare across episodes. Finally, for our 3rd question, we analyzed topics with LDA and saw what insights we could get through topic modeling.
+
+
+## Analysis
+
+### Emotional Tone across all episodes
+
+Next is the code for a non parametric regression model and plots showing the emotional Tone across all episodes.
+
+```{r analysis}
+#cleaning episode count missing values
+dfcritics = dfcritics[dfcritics['nepisode']!='na',]
+dfcritics$nepisode = as.integer(dfcritics$nepisode)
+dfusers = dfusers[dfusers['n.episode']!='na',]
+dfusers$n.episode = as.integer(dfusers$n.episode)
+#creating a set with lenght numer of episodes
+a = tapply(dfcritics$Tone, dfcritics$nepisode, mean)
+b = tapply(dfusers$Tone, dfusers$n.episode, mean)
+
+#Fit function for Critics reviews
+fitToneC = loess(Tone~nepisode, data = dfcritics, span = 0.2, na.action = na.exclude)
+#Get Predicted Values by episode
+valsToneC = predict(fitToneC, newdata = seq(length(a)))
+
+#Fit function for Viewers reviews
+fitToneU = loess(Tone~n.episode, data = dfusers, span = 0.2, na.action = na.exclude)
+#Get Predicted Values by episode
+valsToneU = predict(fitToneU, newdata = seq(length(b)))
+
+#episodes Highlits
+#Pilot - 1
+#Red Wedding S03E09 - 29
+#The mountain and the viper S05E08 - 48
+#Battle of the bastards S06E09 - 59
+#Finale - 73
+
+
+#Plot Critics Predicted Values
+plot(y=valsToneC, x = seq(length(a)), 
+         type="l", xlab="Episode", ylab = "Emotional Tone of reviews", col = 'red', ylim = c(25, 60))
+#Plot Viewers Predicted Values;
+lines(y=valsToneU, seq(length(b)), 
+         type="l", xlab="Episode", ylab = "Emotional Tone of reviews", col = 'blue')
+
+abline(v=29)
+abline(v=48)
+abline(v=59)
+
+
+```
+The Plot shows emotional tone regression models where Critics (red line) Tend to use more positive emotional tone words than viewers. And also, there is a decreasing trend of emotional Tone comparing early episodes vs last season episodes 
+
+
+### Comparing Emotional Tone Across Groups
+
+to compare the emotional tone across groups we build a logistic regression model.
+```{r}
+#merging data for processing
+dfcritics['group'] = 'critics'
+#dfcritics['group']
+dfusers['group'] = 'users'
+#dfusers['group']
+#data_log = as.data.frame()
+merge1 = dfcritics[,c('Tone','group','Comment')]
+merge2 = dfusers[,c('Tone','group','Comment')]
+logistic_data = rbind(merge1,merge2)
+```
+
+```{r}
+#building logistic regression model
+model = lrm(group ~ Tone, #model formula like lm()
+            data = logistic_data)
+
+model_glm = glm(as.factor(group) ~ Tone, family = 'binomial', data = logistic_data)
+
+model
+model_glm
+```
+
+the model is statisticaly significant, discrimination indexes indicates that the variance represented by the model is 1.4% and concordance index is 0.55, meaning that the model is not discriminating the outcomes.
+
+### Analyzing Topics
+
+First we create a LDA model to analyze the set of words for each topic. After Trying with several types of LDA techniques and number of topics. we set the number of topics to 5 with a gibbs LDA.
+
+```{r}
+#CORPUS
+import_corpus = Corpus(VectorSource(logistic_data$Comment))
+#doc matrix
+import_mat =  DocumentTermMatrix(import_corpus,
+           control = list(stemming = FALSE, #create root words
+                          stopwords = TRUE, #remove stop words
+                          minWordLength = 3, #cut out small words
+                          removeNumbers = TRUE, #take out the numbers
+                          removePunctuation = TRUE)) #take out punctuation 
+#word outliers
+import_weight = tapply(import_mat$v/row_sums(import_mat)[import_mat$i], 
+                       import_mat$j, 
+                       mean) *
+  log2(nDocs(import_mat)/col_sums(import_mat > 0))
+
+#ignore very frequent and 0 terms
+import_mat = import_mat[ , import_weight <= 0.95]
+import_mat = import_mat[ row_sums(import_mat) > 0, ]
+
+#create LDA model
+
+k = 5 #number of topics
+SEED = 777
+
+LDA_gibbs = LDA(import_mat, k = k, method = "Gibbs", 
+                control = list(seed = SEED, burnin = 1000, thin = 100, iter = 1000))
+
+#alpha smaller alpha - high percentage of documents are clasify into a single topic
+LDA_gibbs@alpha
+#entropy (lower value = almost everything is the same, higher value = topics are evenly spread)
+sapply(list(LDA_gibbs), function (x) mean(apply(posterior(x)$topics, 1, function(z) - sum(z * log(z)))))
+
+```
+After creating a LDA model we can plot each word to analyze and then interpret each topic.
+```{r}
+#topis (matrix - document by Topics) 
+topics(LDA_gibbs, k)[1:5,1:20] 
+terms(LDA_gibbs,20)
+
+LDA_fit_topics = tidy(LDA_gibbs, matrix = "beta")
+
+#create a top terms 
+top_terms = LDA_fit_topics %>%
+   group_by(topic) %>%
+   top_n(15, beta) %>%
+   ungroup() %>%
+   arrange(topic, -beta)
+
+top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  cleanup +
+  coord_flip()
+```
+In this case each topic could be described as:
+
+<ul>
+ <li>Topic 1 - "Hype": This topic contains a set of words mainly positive </li>
+ <li>Topic 2 - "jaime-Briene": This topic contains a set of words which can describe tales related to characters Jaime and Briene </li>
+ <li>Topic 3 - "Westeros": This topic contains a set of words related to westeros and scenes related to Jon, Sansa, Cersei and Daenerys </li>
+ <li>Topic 4 - "arya-bran": This topic contains a set of words related to Arya and Bran Stark </li>
+ <li>Topic 5 - "books": This topic contains a set of words that makes references to the books </li>
+</ul>
+
+
+```{r}
+##r chunk
+LDA_gamma5 = as.data.frame(tidy(LDA_gibbs, matrix = "gamma"))
+LDA_gamma5 = reshape(LDA_gamma5, idvar = 'document', timevar = 'topic', direction = 'wide')
+
+#head(LDA_gamma5)
+library(dplyr)
+logistic_data$document = row.names(logistic_data)
+LDA_topics = merge(logistic_data, LDA_gamma5, by = 'document')
+
+#cor.test(LDA_topics$gamma.1, LDA_topics$sentiment, method = 'spearman')
+wilcox.test(LDA_topics$gamma.1~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.2~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.3~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.4~LDA_topics$group)
+wilcox.test(LDA_topics$gamma.5~LDA_topics$group)
+
+#all p value less than 0.05 
+boxplot(gamma.1~group,data=LDA_topics, main="group and theme 1",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.2~group,data=LDA_topics, main="group and theme 2",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.3~group,data=LDA_topics, main="group and theme 3",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.4~group,data=LDA_topics, main="group and theme 4",
+   xlab="sentiment", ylab="component score")
+boxplot(gamma.5~group,data=LDA_topics, main="group and theme 5",
+   xlab="sentiment", ylab="component score")
+```
+
+There is a statistical difference on each group viewer/critic for each topic and the most used topic for Critics is Topic 1 - "Hype". Meanwhile viewers tendo to address Topic 1 through 4 instead in their reviews.
+
+## Discussion
+
+We can see that overall the Tone trend is similar for both groups. the difference is that critics tend to use higher "emotional tone" words in their reviews.
+another interesting observed behavior is that top rated episodes are not placed on peak Tone values from the regression line.
+
+
+Also in terms of user vs critics emotional tone in their reviews, there is no significant effect size between the two groups.
+we can interpret this as the Tone is not a good predictor to determine if the review was wrote by a critic or a user.
+
+Finally, after analyzing the reviews with a topic model critics tend to write more Hyped reviews than viewers, behavior that we also see with the non parametric regression.
+
+### Credit Guidelines
+
+If working in a group, specify what each member of the group did. For each of the steps below, specify who did the work. If more than one member worked on the step, put names of everyone who worked on it.
+
+- Developed Research Question
+- Acquired Data
+- Analyzed Data
+- Researched Related Work
+- Wrote Introduction
+- Wrote Method
+- Wrote Analysis/Results
+- Wrote Discussion
+- Revisions/Edits
+
+### References
+
+Include your references in APA style.
