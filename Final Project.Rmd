@@ -1,6 +1,6 @@
 ---
 title: 'Final Project'
-author: "Reda Ijaz / Juan Arredondo"
+author: "Juan Arredondo"
 date: "Sys.Date()"
 output: html_document
 ---
@@ -263,21 +263,3 @@ Also in terms of user vs critics emotional tone in their reviews, there is no si
 we can interpret this as the Tone is not a good predictor to determine if the review was wrote by a critic or a user.
 
 Finally, after analyzing the reviews with a topic model critics tend to write more Hyped reviews than viewers, behavior that we also see with the non parametric regression.
-
-### Credit Guidelines
-
-If working in a group, specify what each member of the group did. For each of the steps below, specify who did the work. If more than one member worked on the step, put names of everyone who worked on it.
-
-- Developed Research Question
-- Acquired Data
-- Analyzed Data
-- Researched Related Work
-- Wrote Introduction
-- Wrote Method
-- Wrote Analysis/Results
-- Wrote Discussion
-- Revisions/Edits
-
-### References
-
-Include your references in APA style.
